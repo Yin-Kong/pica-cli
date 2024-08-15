@@ -17,6 +17,7 @@ import ProgressBar from 'progress'
 import { Comic } from './types'
 import pLimit from 'p-limit'
 import pico from 'picocolors'
+import Table from 'cli-table3'
 
 loadEnv()
 
@@ -34,7 +35,9 @@ async function main() {
         PICA_PASSWORD,
         PICA_DL_CONTENT,
         PICA_DL_CHAPTER,
+        PICA_DL_FAV_PAGE,
         PICA_DL_CONCURRENCY,
+        PICA_PRINT_FAVS,
         PICA_IN_GITHUB
     } = process.env
     const PICA_DL_SEARCH_KEYWORDS = process.env.PICA_DL_SEARCH_KEYWORDS?.trim()
@@ -75,8 +78,27 @@ async function main() {
     }
 
     if (answer === 'favorites') {
-        const res = await pica.favorites()
-        comics.push(...res)
+        spinner.start('正在获取收藏夹信息')
+        const res = await pica.favoritesAll(PICA_DL_FAV_PAGE)
+        comics.push(...res.comics)
+        spinner.stop()
+
+        log.info(
+            `收藏夹共有 ${pico.cyan(res.pages)} 页${
+                PICA_DL_FAV_PAGE
+                    ? `, 第 ${pico.cyan(PICA_DL_FAV_PAGE)} 页等待下载`
+                    : ''
+            }`
+        )
+    }
+    if (PICA_PRINT_FAVS) {
+        const res = await pica.favoritesAll()
+        const table = new Table({
+            head: ['cid', 'title']
+        })
+        res.comics.forEach((item) => table.push([item._id, item.title]))
+        console.log('收藏夹全部漫画信息：')
+        console.log(table.toString())
     }
 
     if (answer === 'search') {
@@ -148,20 +170,28 @@ async function main() {
         return
     }
 
+    log.info(`${pico.cyan(comics.length)} 部漫画等待下载`)
+
     for (const comic of comics) {
         const title = comic.title.trim()
         const cid = comic._id
 
         spinner.start('正在获取章节信息')
-        let episodes = await pica.episodesAll(cid)
+        let episodes = await pica.episodesAll(cid).catch((error) => {
+            if (error === 400) {
+                spinner.stop()
+                log.error(`「${title}」无法访问，可能已被哔咔禁止`)
+            }
+            return []
+        })
         episodes = filterEpisodes(episodes, cid)
         spinner.stop()
-
-        log.info(`${title} 查询到 ${episodes.length} 个未下载章节`)
 
         if (episodes.length === 0) {
             continue
         }
+
+        log.info(`${title} 查询到 ${pico.cyan(episodes.length)} 个未下载章节`)
 
         const selectedEpisodes = PICA_DL_CHAPTER
             ? selectChapterByInput(PICA_DL_CHAPTER, episodes)
@@ -180,7 +210,7 @@ async function main() {
                 })
 
         for (const ep of selectedEpisodes) {
-            spinner.start(`正在获取章节 ${ep.title} 的图片信息`)
+            spinner.start(`正在获取章节 ${pico.cyan(ep.title)} 的图片列表`)
             let pictures = await pica.picturesAll(cid, ep)
             pictures = filterPictures(pictures, title, ep.title)
             spinner.stop()

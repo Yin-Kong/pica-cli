@@ -11,7 +11,8 @@ import {
     PagePicture,
     PageSearch,
     PageEpisode,
-    Favorites
+    PageFavorites,
+    ExpectedPage
 } from './types'
 
 const PICA_SECRET_KEY =
@@ -83,7 +84,13 @@ export class Pica {
                 return result.data
             },
             (error: AxiosError) => {
-                const { config, message } = error
+                const { config, message, response } = error
+
+                // 哔咔禁止访问的资源
+                if (response?.status === 400) {
+                    return Promise.reject(response?.status)
+                }
+
                 const url = config?.url || ''
 
                 const retryCount = this.retryMap.get(url) || 0
@@ -94,7 +101,7 @@ export class Pica {
                     this.retryMap.delete(url)
                 }
 
-                debug('\nerror %s %s %O', url, message, error.response?.data)
+                debug('\nerror %s %s %O', url, message, response?.data)
                 return Promise.reject(message)
             }
         )
@@ -257,7 +264,7 @@ export class Pica {
     }
 
     async searchAll(keyword: string) {
-        const comics = []
+        const comics: Comic[] = []
         if (keyword) {
             const first = await this.search(keyword)
             const pages = first.pages
@@ -286,10 +293,28 @@ export class Pica {
     /**
      * 获取收藏夹的内容
      */
-    async favorites() {
-        const url = 'users/favourite'
-        const res = await this.request<Favorites>('get', url)
-        return res.comics.docs
+    async favorites(page = 1, sort = this.Order.latest) {
+        const url = `users/favourite?page=${page}&s=${sort}`
+        const res = await this.request<PageFavorites>('get', url)
+        return res.comics
+    }
+
+    async favoritesAll(page: ExpectedPage = 'all') {
+        const pageNum = Number(page)
+        if (page && Number.isInteger(pageNum)) {
+            const res = await this.favorites(pageNum)
+            return { comics: res.docs, pages: res.pages }
+        }
+
+        const comics: Comic[] = []
+        const first = await this.favorites()
+        const pages = first.pages
+        comics.push(...first.docs)
+        for (let page = 2; page <= pages; page++) {
+            const res = await this.favorites(page)
+            comics.push(...res.docs)
+        }
+        return { comics, pages }
     }
 
     /**

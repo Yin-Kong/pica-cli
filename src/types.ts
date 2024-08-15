@@ -3,13 +3,6 @@ export type LoginResult = {
 }
 
 /**
- * 收藏夹
- */
-export type Favorites = {
-    docs: Comic[]
-}
-
-/**
  * 分页
  */
 export type Page<T> = {
@@ -35,6 +28,7 @@ export type Comic = {
     _id: string
 }
 
+export type PageFavorites = Page<Comic>
 export type PageSearch = Page<Comic>
 
 /**
@@ -71,3 +65,5 @@ export interface DInfo {
     epTitle: string // 章节标题
     picName: string // 图片文件名
 }
+
+export type ExpectedPage = number | string | undefined
